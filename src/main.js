@@ -3,6 +3,7 @@ import { createRun, chooseEquipment, handTotal, payout, bustRisk, pocket, hit, s
 import { mountGame } from './scene.js';
 import { SoundEngine } from './audio.js';
 import { RANKS, freshProfile, loadProfile, saveProfile, rankProgress, unlockedEquipment, earnReputation, recordRun } from './profile.js';
+import { getGuideMessage, getTrainBriefing } from './guide.js';
 
 const $ = (selector) => document.querySelector(selector);
 const money = (value) => `$${value.toLocaleString('en-US')}`;
@@ -30,9 +31,11 @@ $('#app').innerHTML = `
       <nav aria-label="Game controls"><button class="text-button" data-action="rules">How to play <span class="help-mark">?</span></button><button class="icon-button" id="sound-button" data-action="sound" aria-label="Enable sound" title="Enable sound">${icon('mute', 20)}</button><button class="icon-button" data-action="restart" aria-label="Start a new run" title="New run">↻</button></nav>
     </header>
     <div class="edition-line"><span>A LITTLE LUCK. A LITTLE LARCENY.</span><span>BLACKJACK • TRAIN ROBBERIES • BAD DECISIONS</span></div>
+    <div class="rail-route" id="rail-route" aria-label="Your three-train route"></div>
     <main class="game-layout">
       <aside class="sidebar" aria-label="Run progress and equipment">
         <section class="job-ticket">
+          <div class="ticket-art" aria-hidden="true"></div>
           <div class="eyebrow ticket-label">THE JOB <span id="train-number">01 / 03</span></div>
           <h1 id="train-name">The Sundown Local</h1>
           <p class="route" id="train-route">DRY CREEK → RED ROCK</p>
@@ -55,13 +58,17 @@ $('#app').innerHTML = `
         <div class="table-frame"><div id="game-table" role="img" aria-label="Playing cards on a train carriage table. Card controls are available immediately after the canvas."></div></div>
         <div id="hand-access" class="hand-access" aria-label="Select a card to pocket"></div>
         <div class="table-ledger">
-          <div class="alarm-block"><span class="eyebrow">ALARM</span><div><strong id="alarm-value">—</strong><span class="out-of"> / 21</span><span class="risk-label" id="risk-label">WAITING TO BOARD</span></div><div class="alarm-track"><span id="alarm-fill"></span></div></div>
-          <div class="payout-block"><span class="eyebrow">ESCAPE PAYOUT</span><strong id="escape-value">$0</strong><span id="escape-math">Loose loot × getaway bonus</span></div>
-          <div class="secured-block"><span class="eyebrow">IN YOUR POCKET</span><strong id="secured-value">$0</strong><span>Safe, even if you bust.</span></div>
+          <div class="alarm-block"><span class="eyebrow">HAND TOTAL · KEEP ≤ 21</span><div><strong id="alarm-value">—</strong><span class="out-of"> / 21</span><span class="risk-label" id="risk-label">WAITING TO BOARD</span></div><div class="alarm-track"><span id="alarm-fill"></span></div></div>
+          <div class="payout-block"><span class="eyebrow">CASH OUT NOW</span><strong id="escape-value">$0</strong><span id="escape-math">Loose loot × getaway bonus</span></div>
+          <div class="secured-block"><span class="eyebrow">ALREADY SAFE</span><strong id="secured-value">$0</strong><span>Yours, even if you bust.</span></div>
         </div>
         <div class="bonus-strip" id="bonus-strip" aria-label="Active equipment bonuses" hidden></div>
+        <section class="guide-panel" id="guide-panel" aria-label="Dusty’s advice">
+          <div class="dusty-portrait mood-welcome" id="guide-portrait" aria-hidden="true"></div>
+          <div class="guide-copy"><span class="guide-name">DUSTY <span>YOUR GETAWAY GUIDE</span></span><strong id="guide-title"></strong><p id="guide-text"></p><small id="guide-hint"></small></div>
+        </section>
         <div class="action-panel" id="action-panel">
-          <div class="action-buttons"><button class="button button-primary" id="hit-button" data-action="hit" disabled>Search again ${icon('arrow', 18)}<kbd>H</kbd></button><button class="button button-escape" id="stand-button" data-action="stand" disabled>Make your escape <kbd>S</kbd></button><button class="button button-pocket" id="pocket-button" data-action="pocket" disabled>${icon('bag', 19)}<span>Select a card</span><kbd>P</kbd></button></div>
+          <div class="action-buttons"><button class="button button-primary" id="hit-button" data-action="hit" disabled><span class="action-copy"><strong>Draw a card</strong><small id="draw-detail">More loot. More risk.</small></span><kbd>H</kbd></button><button class="button button-escape" id="stand-button" data-action="stand" disabled><span class="action-copy"><strong id="cashout-label">Cash out</strong><small>End this hand safely</small></span><kbd>S</kbd></button><button class="button button-pocket" id="pocket-button" data-action="pocket" disabled>${icon('bag', 19)}<span class="action-copy"><strong id="pocket-label">Pocket a card</strong><small id="pocket-detail">Tap a card first</small></span><kbd>P</kbd></button></div>
           <p class="action-hint" id="action-hint">Select a card to secure its printed loot. Its alarm value stays.</p>
         </div>
         <div class="result-panel" id="result-panel" hidden></div>
@@ -89,6 +96,7 @@ let profile = profileLoad.profile;
 let storageAvailable = profileLoad.available;
 let recentPromotion = null;
 let toastTimer;
+let guideKey = '';
 const cashCounters = new WeakMap();
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 const dialog = $('#game-dialog');
@@ -136,7 +144,7 @@ async function enableSound(enabled) {
 function rewardToast(title, detail) {
   const toast = $('#reward-toast');
   clearTimeout(toastTimer);
-  toast.innerHTML = `${icon('star', 27)}<div><strong>${title}</strong><span>${detail}</span></div>`;
+  toast.innerHTML = `<div class="dusty-portrait mood-cheer" aria-hidden="true"></div><div><strong>${title}</strong><span>${detail}</span></div>`;
   toast.hidden = false;
   toastTimer = setTimeout(() => { toast.hidden = true; }, 5500);
 }
@@ -150,12 +158,33 @@ function profileSummary() {
   return `<div class="career-summary"><strong>LV. ${rank.level} ${rank.name} · ${profile.reputation} REP</strong><span>${next ? `${next.reputation - profile.reputation} REP until ${next.name}` : 'Frontier Legend · keep chasing your best take'}</span></div>`;
 }
 
+function guideMarkup(message, extraClass = '') {
+  return `<div class="guide-panel modal-guide ${extraClass}"><div class="dusty-portrait mood-${message.mood}" aria-hidden="true"></div><div class="guide-copy"><span class="guide-name">DUSTY <span>YOUR GETAWAY GUIDE</span></span><strong>${message.title}</strong><p>${message.text}</p>${message.hint ? `<small>${message.hint}</small>` : ''}</div></div>`;
+}
+
+function renderGuide() {
+  const message = getGuideMessage(state, selectedId);
+  const nextKey = JSON.stringify(message);
+  if (guideKey !== nextKey) {
+    guideKey = nextKey;
+    $('#guide-portrait').className = `dusty-portrait mood-${message.mood}`;
+    $('#guide-title').textContent = message.title;
+    $('#guide-text').textContent = message.text;
+    $('#guide-hint').textContent = message.hint;
+    $('#guide-hint').hidden = !message.hint;
+    $('#guide-panel').dataset.mood = message.mood;
+    if (!reduceMotion.matches) $('#guide-portrait').animate([{ transform: 'translateY(5px) rotate(-3deg)' }, { transform: 'translateY(0) rotate(0)' }], { duration: 320, easing: 'ease-out' });
+  }
+  for (const action of ['hit', 'stand', 'pocket']) $(`#${action}-button`).classList.toggle('guide-suggested', state?.phase === 'playing' && message.emphasis === action);
+}
+
 function showDialog(kind, html) {
   dialogKind = kind;
   $('#dialog-content').innerHTML = html;
   if (!dialog.open) dialog.showModal();
   const first = dialog.querySelector('[autofocus], button');
-  first?.focus();
+  first?.focus({ preventScroll: true });
+  dialog.scrollTop = 0;
 }
 
 function closeDialog() {
@@ -164,21 +193,21 @@ function closeDialog() {
 }
 
 function showWelcome() {
-  showDialog('welcome', `<div class="welcome-art">${icon('train', 64)}<span>BORDERLAND RAILROAD CO.</span></div><div class="modal-body welcome-body"><span class="eyebrow">YOUR NEXT SCORE AWAITS</span><h2 id="dialog-title">A little luck.<br>A little larceny.</h2><p>Three trains stand between you and a clean getaway. Search for loot, stay under 22, and know when to leave.</p><div class="welcome-rules"><span><b>01</b> Search for more loot.</span><span><b>02</b> Pocket one find for insurance.</span><span><b>03</b> Build a name. Unlock new gear.</span></div>${profile.reputation ? profileSummary() : ''}<label class="sound-choice"><input type="checkbox" id="welcome-sound" ${profile.sound ? 'checked' : ''}> Sound effects & quiet train ambience</label><button class="button button-primary wide" data-action="start" autofocus>Saddle up ${icon('arrow', 20)}</button><p class="modal-fine">5–10 minutes per run. Reputation stays with you. No real money.</p></div>`);
+  showDialog('welcome', `<div class="welcome-art railroad-illustration"><span>THREE TRAINS BETWEEN YOU & FREEDOM</span></div><div class="modal-body welcome-body"><span class="eyebrow">BLACKJACK WITH A GETAWAY PLAN</span><h2 id="dialog-title">Howdy, partner.</h2>${guideMarkup({ mood: 'welcome', title: 'I’m Dusty. I’ll show you the ropes.', text: 'Collect loot without going over 21. Take $180 from the first train’s three hands to reach the next stop.', hint: 'The card number adds to your hand. The dollar amount is its loot.' })}<div class="welcome-rules"><span><b>01</b> <strong>Draw a card</strong> for more loot and a bigger hand.</span><span><b>02</b> <strong>Cash out</strong> before your hand goes over 21.</span><span><b>03</b> <strong>Pocket one card</strong> to keep its cash, even in a bust.</span></div>${profile.reputation ? profileSummary() : ''}<label class="sound-choice"><input type="checkbox" id="welcome-sound" ${profile.sound ? 'checked' : ''}> Sound effects & quiet train ambience</label><button class="button button-primary wide" data-action="start" autofocus>Let’s ride ${icon('arrow', 20)}</button><p class="modal-fine">5–10 minutes per run. Earn reputation and unlock gear. No real money.</p></div>`);
 }
 
 function showCamp() {
   const train = TRAINS[state.trainIndex];
   const job = SIDE_JOBS.find((item) => item.id === state.sideJobId);
-  showDialog('camp', `<div class="modal-body"><span class="eyebrow">${state.trainIndex === 0 ? 'BEFORE YOU BOARD' : 'BACK AT CAMP • LAST JOB COMPLETE · +8 REP'}</span><h2 id="dialog-title">Choose your edge.</h2><p>One free piece of equipment. It stays with you for the whole run.</p>${promotionBanner()}<div class="gear-choices">${state.offers.map((id) => {
+  showDialog('camp', `<div class="camp-art railroad-illustration"><span>TRAIN ${state.trainIndex + 1} OF 3</span><strong>${train.name}</strong></div><div class="modal-body"><span class="eyebrow">${state.trainIndex === 0 ? 'BEFORE YOU BOARD' : 'TRAIN CLEARED · +8 REPUTATION'}</span><h2 id="dialog-title">Pick your free gear.</h2>${guideMarkup(getTrainBriefing(state.trainIndex))}${promotionBanner()}<div class="gear-choices">${state.offers.map((id) => {
     const gear = EQUIPMENT.find((item) => item.id === id);
     return `<button class="gear-choice" data-action="equip" data-id="${id}"><span class="gear-choice-icon">${icon(gear.icon, 30)}</span><span class="eyebrow">${gear.label}</span><strong>${gear.name}</strong><span>${gear.description}</span><span class="choose-label">TAKE IT ${icon('arrow', 15)}</span></button>`;
-  }).join('')}</div><div class="next-job"><span>${icon('train', 29)}</span><div><strong>${train.name} · Target ${money(train.target)}</strong><p>${train.description}</p><p><b>Side job · ${job.name} (+${job.reward} REP)</b><br>${job.description}</p></div></div><p class="modal-fine">Make the cash target to ride on. The side job is an optional extra.</p></div>`);
+  }).join('')}</div><div class="next-job"><span>${icon('star', 29)}</span><div><strong>Optional side job · ${job.name} · +${job.reward} REP</strong><p>${job.description}</p></div></div><p class="modal-fine">Pick one item to board. Equipment works automatically and stays for this run.</p></div>`);
 }
 
 function showEnd() {
   const won = state.phase === 'won';
-  showDialog('end', `<div class="end-art ${won ? 'end-win' : ''}">${icon(won ? 'star' : 'train', 58)}<span>${won ? 'THE FRONTIER IS YOURS' : 'END OF THE LINE'}</span></div><div class="modal-body welcome-body"><span class="eyebrow">${won ? 'THREE TRAINS. ONE VERY GOOD STORY.' : `${TRAINS[state.trainIndex].name.toUpperCase()}`}</span><h2 id="dialog-title">${won ? 'Gone with the gold.' : 'The trail ends here.'}</h2><p>${won ? 'You cleared every target and made it west. A good outlaw knows when to disappear.' : `You took ${money(state.trainLoot)} of the ${money(TRAINS[state.trainIndex].target)} needed for this train. Your reputation survives. Come back with a new plan.`}</p><div class="end-score"><span>TOTAL TAKE</span><strong>${money(state.totalLoot)}</strong><small>${state.history.filter((item) => !item.busted).length} clean escapes · ${state.history.filter((item) => item.perfect).length} perfect getaways</small><b class="earned-rep">+${state.reputationEarned} REPUTATION THIS RUN</b><small>Best take ${money(profile.bestTake)} · ${profile.wins} successful ${profile.wins === 1 ? 'run' : 'runs'}</small></div>${promotionBanner()}${profileSummary()}<button class="button button-primary wide" data-action="new-run">Ride again ${icon('arrow', 18)}</button><button class="text-button replay-button" data-action="replay">Replay this seed with current unlocks</button></div>`);
+  showDialog('end', `<div class="end-art ${won ? 'end-win' : ''}"><div class="dusty-portrait mood-${won ? 'cheer' : 'concern'}" aria-hidden="true"></div><span>${won ? 'THE FRONTIER IS YOURS' : 'END OF THE LINE'}</span></div><div class="modal-body welcome-body"><span class="eyebrow">${won ? 'THREE TRAINS. ONE VERY GOOD STORY.' : TRAINS[state.trainIndex].name.toUpperCase()}</span><h2 id="dialog-title">${won ? 'Gone with the gold.' : 'The trail ends here.'}</h2><p class="dusty-quote">“${getGuideMessage(state).text}” <span>— Dusty</span></p><div class="end-score"><span>TOTAL TAKE</span><strong>${money(state.totalLoot)}</strong><small>${state.history.filter((item) => !item.busted).length} clean escapes · ${state.history.filter((item) => item.perfect).length} perfect getaways</small><b class="earned-rep">+${state.reputationEarned} REPUTATION THIS RUN</b><small>Best take ${money(profile.bestTake)} · ${profile.wins} successful ${profile.wins === 1 ? 'run' : 'runs'}</small></div>${promotionBanner()}${profileSummary()}<button class="button button-primary wide" data-action="new-run">Ride again ${icon('arrow', 18)}</button><button class="text-button replay-button" data-action="replay">Replay this seed with current unlocks</button></div>`);
 }
 
 function reconcileDialog() {
@@ -193,6 +222,11 @@ function render() {
   const total = state ? handTotal(state.hand) : 0;
   const playing = state?.phase === 'playing';
   const score = state ? payout(state) : { amount: 0, base: 0, escape: 1, gearMultiplier: 1 };
+  $('#rail-route').innerHTML = TRAINS.map((stop, index) => {
+    const complete = state?.phase === 'won' || index < (state?.trainIndex || 0);
+    const current = index === (state?.trainIndex || 0) && !complete;
+    return `<div class="rail-stop ${current ? 'current' : ''} ${complete ? 'complete' : ''}" ${current ? 'aria-current="step"' : ''}><span class="stop-number">${complete ? '✓' : `0${index + 1}`}</span><div><strong>${stop.name.replace('The ', '')}</strong><span>${complete ? 'CLEARED' : `${money(stop.target)} TO RIDE ON`}</span></div></div>`;
+  }).join('');
   const { rank, next, fraction } = rankProgress(profile);
   $('#rank-level').textContent = `LV. ${rank.level}`;
   $('#rank-name').textContent = rank.name;
@@ -207,7 +241,7 @@ function render() {
     const ready = playing && !state.sideJobComplete && (job.id === 'inside-job' ? state.pocketedId && total >= 18 : job.id === 'long-game' ? state.hand.length >= 4 : total === 21);
     $('#side-job').classList.toggle('complete', state.sideJobComplete);
     $('#side-job').classList.toggle('ready', Boolean(ready));
-    $('#side-job').innerHTML = `<span class="side-job-icon">${state.sideJobComplete ? '✓' : icon('star', 19)}</span><div><strong>${state.sideJobComplete ? 'SIDE JOB COMPLETE' : `SIDE JOB · ${job.name.toUpperCase()}`}</strong><span>${state.sideJobComplete ? `${job.name} · Your name is getting around.` : ready ? 'Ready to claim. Make your escape to collect.' : job.description}</span></div><span class="side-job-reward">${state.sideJobComplete ? 'EARNED ' : '+'}${job.reward} REP</span>`;
+    $('#side-job').innerHTML = `<span class="side-job-icon">${state.sideJobComplete ? '✓' : icon('star', 19)}</span><div><strong>${state.sideJobComplete ? 'SIDE JOB COMPLETE' : `OPTIONAL · ${job.name.toUpperCase()}`}</strong><span>${state.sideJobComplete ? `${job.name} · Your name is getting around.` : ready ? 'Ready to claim. Cash out to collect.' : job.description}</span></div><span class="side-job-reward">${state.sideJobComplete ? 'EARNED ' : '+'}${job.reward} REP</span>`;
   }
   $('#train-number').textContent = `${String((state?.trainIndex || 0) + 1).padStart(2, '0')} / 03`;
   $('#train-name').textContent = train.name;
@@ -230,7 +264,7 @@ function render() {
       : `<div class="kit-empty"><span>+</span><span>${i === 0 ? 'Your first edge awaits' : `Unlock after train ${i}`}</span></div>`;
   }).join('');
   $('#shoe-count').textContent = `${state?.deck.length ?? 52} cards in the shoe`;
-  $('#carriage-label').textContent = `CARRIAGE ${String((state?.carriageIndex || 0) + 1).padStart(2, '0')} OF 03`;
+  $('#carriage-label').textContent = `HAND ${(state?.carriageIndex || 0) + 1} OF 3 · TRAIN ${(state?.trainIndex || 0) + 1} OF 3`;
   $('#carriage-title').textContent = state?.result?.busted ? 'The guards caught on.' : total === 21 ? 'The perfect moment.' : ['A promising start.', 'Still feeling lucky?', 'One last score.'][state?.carriageIndex || 0];
   $('#rule-tag').textContent = `★ ${train.rule.toUpperCase()}`;
   $('#rule-tag').title = train.description;
@@ -248,10 +282,13 @@ function render() {
   $('#bonus-strip').innerHTML = bonuses.map((bonus) => `<span class="bonus-badge ${bonus.id === 'federal-escort' ? 'penalty' : ''}">${bonus.label}<b>${bonus.detail}</b></span>`).join('');
   $('#hit-button').disabled = !playing;
   $('#stand-button').disabled = !playing;
+  $('#draw-detail').textContent = playing ? `${Math.round(bustRisk(state) * 100)}% chance to bust` : 'More loot. More risk.';
+  $('#cashout-label').textContent = playing ? `Cash out ${money(score.amount)}` : 'Cash out';
   const selected = state?.hand.find((card) => card.id === selectedId);
   $('#pocket-button').disabled = !playing || Boolean(state.pocketedId) || !selected;
-  $('#pocket-button span').textContent = state?.pocketedId ? 'Pocket used' : selected ? `Pocket ${money(selected.loot * (state.gear.includes('false-bottom') ? 2 : 1))}` : 'Select a card';
-  $('#action-hint').textContent = state?.pocketedId ? `${money(state.secured)} is safe.${state.boostNext ? ' Fast Hands: your next find is worth double.' : ''} The card still counts toward 21.` : selected ? `Bank ${money(selected.loot * (state.gear.includes('false-bottom') ? 2 : 1))} now. Escape payout: ${money(score.amount)} → ${money(payout(pocket(state, selectedId)).amount)}. Alarm stays ${total}.` : 'Select a card to secure its printed loot. Its alarm value stays.';
+  $('#pocket-label').textContent = state?.pocketedId ? 'Pocket used' : selected ? `Pocket ${money(selected.loot * (state.gear.includes('false-bottom') ? 2 : 1))}` : 'Pocket a card';
+  $('#pocket-detail').textContent = state?.pocketedId ? 'Once per hand' : selected ? 'Keep this cash through a bust' : 'Tap a card first';
+  $('#action-hint').textContent = state?.pocketedId ? `${money(state.secured)} is safe.${state.boostNext ? ' Fast Hands: your next find is worth double.' : ''} The card still counts toward 21.` : selected ? `Keep ${money(selected.loot * (state.gear.includes('false-bottom') ? 2 : 1))} now. Cash-out payout: ${money(score.amount)} → ${money(payout(pocket(state, selectedId)).amount)}. Hand total stays ${total}.` : 'Tap a card to preview pocketing it. The cash stays safe; the card still counts toward 21.';
   $('#action-panel').hidden = state?.phase === 'result';
   const resultPanel = $('#result-panel');
   resultPanel.hidden = state?.phase !== 'result';
@@ -265,6 +302,7 @@ function render() {
   $('#run-stamp').textContent = state ? `RUN #${state.seed} · TOTAL TAKE ${money(state.totalLoot)}` : 'THREE TRAINS BETWEEN YOU & FREEDOM';
   $('.table-frame').classList.toggle('many-cards', (state?.hand.length || 0) >= 4);
   $('.table-frame').classList.toggle('crowded-cards', (state?.hand.length || 0) >= 7);
+  renderGuide();
   scene?.sync(state, selectedId);
   soundEngine.setDanger(playing ? bustRisk(state) : 0);
   soundEngine.setScene(!state ? 'welcome' : ['won', 'lost'].includes(state.phase) ? 'end' : state.phase);
@@ -297,7 +335,10 @@ function updateState(next, cue) {
   if (!state.hand.some((card) => card.id === selectedId) || state.phase !== 'playing' || state.pocketedId) selectedId = null;
   render();
   reconcileDialog();
-  if (boarding && window.matchMedia('(max-width: 820px)').matches) $('.play-area').scrollIntoView({ block: 'start' });
+  if (boarding) {
+    const compactDesktop = window.matchMedia('(min-width: 821px) and (max-height: 850px)').matches;
+    $(compactDesktop ? '.table-frame' : '.play-area').scrollIntoView({ block: 'start' });
+  }
   const resultCue = state.phase === 'won' ? 'win' : state.phase === 'lost' ? 'lose' : state.phase === 'result' ? (state.result.busted ? 'bust' : state.result.perfect ? 'perfect' : 'escape') : cue;
   soundEngine.play(earned.promotions.length ? 'levelup' : state.result?.sideJobCompleted && state.phase === 'result' ? 'contract' : resultCue, { value: state.result?.total });
   if (earned.promotions.length) {
@@ -307,7 +348,8 @@ function updateState(next, cue) {
     rewardToast('SIDE JOB COMPLETE · +10 REP', SIDE_JOBS.find((item) => item.id === state.sideJobId).name);
     scene?.celebrate('contract', { amount: 10, label: 'SIDE JOB COMPLETE' });
   }
-  announce(state.result ? `${state.result.busted ? 'Busted.' : 'Escaped.'} ${money(state.result.total)} recovered. ${amount} reputation earned. Train haul ${money(state.trainLoot)}.` : `Alarm ${handTotal(state.hand)} of 21. Escape pays ${money(payout(state).amount)}. ${money(state.secured)} secured.`);
+  const guide = getGuideMessage(state, selectedId);
+  announce(`Dusty: ${guide.title} ${guide.text} ${guide.hint}${amount ? ` ${amount} reputation earned.` : ''}`);
 }
 
 function moveOn(transition) {
@@ -329,7 +371,7 @@ function selectCard(id) {
 }
 
 function showRules() {
-  showDialog('rules', `<div class="modal-body"><div class="modal-heading"><span class="eyebrow">THE OUTLAW’S FIELD GUIDE</span><button class="icon-button" data-action="close" aria-label="Close instructions">×</button></div><h2 id="dialog-title">Know when to leave.</h2><div class="rules-list"><p><b>Search again</b> to draw a card. Number cards count as printed, faces as 10, and aces as 1 or 11. An alarm above 21 means a bust.</p><p><b>Make your escape</b> to cash out loose loot. The closer you get to 21, the better the multiplier. Aces adjust automatically.</p><p><b>Pocket one card</b> by selecting it first. Its printed loot is immediately safe, even in a bust. It keeps contributing to your alarm but loses loose-loot bonuses.</p><p><b>Clear three trains.</b> Each has three carriages and its own cash target. Gear stacks throughout the run. A fresh 52-card deck begins each train; it does not reset between carriages.</p></div><div class="multiplier-table"><span>ALARM</span><span>2–11</span><span>12–15</span><span>16–17</span><span>18–20</span><span>21</span><b>PAYOUT</b><b>×1</b><b>×1.25</b><b>×1.75</b><b>×2.5</b><b>×4</b></div><p class="modal-fine">Equipment and the Federal Escort can change these multipliers. The payout preview always includes them. Fractional dollars round down.</p><p class="keyboard-guide"><kbd>H</kbd> Search <kbd>S</kbd> Escape <kbd>1–9</kbd> Select a card <kbd>P</kbd> Pocket <kbd>Enter</kbd> Next carriage</p><button class="button button-escape wide" data-action="close">Got it. Let’s ride.</button></div>`);
+  showDialog('rules', `<div class="modal-body"><div class="modal-heading"><span class="eyebrow">DUSTY’S FIELD GUIDE</span><button class="icon-button" data-action="close" aria-label="Close instructions">×</button></div><h2 id="dialog-title">Know when to leave.</h2><div class="how-card"><div class="sample-card"><strong>9 ♦</strong><span>$27 LOOT</span></div><p><b>Two numbers. Two jobs.</b><br>The 9 adds to your hand total. The $27 adds to your loot. Keep your total at 21 or less.</p></div><div class="rules-list"><p><b>Draw a card</b> for more loot. Number cards count as printed, faces as 10, and aces as 1 or 11. Aces adjust automatically. Above 21, you bust and lose loose loot.</p><p><b>Cash out</b> to end the hand and keep the payout shown. The closer you get to 21, the better the multiplier.</p><p><b>Pocket one card</b> by selecting it first. Its printed loot is immediately safe, even in a bust. The card still counts toward 21, but no longer earns loose-loot bonuses. The preview shows the tradeoff before you choose.</p><p><b>Clear three trains.</b> Each has three hands and its own cash target. Choose free gear before boarding; it works automatically and stacks throughout the run. Side jobs earn extra reputation, but are optional.</p></div><div class="multiplier-table"><span>TOTAL</span><span>2–11</span><span>12–15</span><span>16–17</span><span>18–20</span><span>21</span><b>PAYOUT</b><b>×1</b><b>×1.25</b><b>×1.75</b><b>×2.5</b><b>×4</b></div><p class="modal-fine">Gear and the Federal Escort can change these multipliers. The payout preview includes them. Fractional dollars round down. Each train starts a fresh 52-card deck, shared across its three hands.</p><p class="keyboard-guide"><kbd>H</kbd> Draw <kbd>S</kbd> Cash out <kbd>1–9</kbd> Select a card <kbd>P</kbd> Pocket <kbd>Enter</kbd> Next carriage</p><button class="button button-escape wide" data-action="close">Got it. Let’s ride.</button></div>`);
 }
 
 function showShoe() {

@@ -56,22 +56,44 @@ export class HeistScene extends Phaser.Scene {
 
   layout() {
     const { width: w, height: h } = this.scale;
+    const compact = h <= 370;
+    const windowTop = compact ? 12 : 18;
+    const windowHeight = compact ? 88 : 120;
+    const feltTop = windowTop + windowHeight + 7;
+    const windowScale = windowHeight / 120;
+    const windowOffset = windowTop - 18 * windowScale;
+    this.tableGeometry = {
+      compact, windowScale, windowOffset,
+      cardsTop: compact ? 137 : 181,
+      bannerY: 100 * windowScale + windowOffset,
+    };
+    this.landscape.setScale(1, windowScale).setY(windowOffset);
+    this.signal.setScale(1, windowScale).setY(windowOffset);
     const g = this.background.clear();
-    g.fillStyle(0x244238).fillRect(0, 0, w, h);
-    g.fillStyle(0x1d352d).fillRect(0, 145, w, h - 145);
+    g.fillStyle(0x624735).fillRect(0, 0, w, feltTop + 2);
+    // Warm timber around the window, with brass edging above the green felt.
+    g.lineStyle(1, 0xd6aa63, 0.1);
+    for (let y = 6; y < feltTop; y += 12) {
+      g.lineBetween(0, y, w, y);
+      g.lineBetween(0, y + 3, w * 0.28, y + 3);
+    }
+    g.fillStyle(0x1d352d).fillRect(0, feltTop, w, h - feltTop);
     // A quiet, deterministic grain on the felt; no downloaded artwork.
     g.lineStyle(1, 0xc4b78c, 0.045);
-    for (let x = -h; x < w; x += 13) g.lineBetween(x, 145, x + h, h);
+    for (let x = -h; x < w; x += 13) g.lineBetween(x, feltTop, x + h, h);
     g.fillStyle(0x152720, 0.45).fillRect(0, h - 9, w, 9);
-    this.windowMask.clear().fillStyle(0xffffff).fillRoundedRect(22, 18, w - 44, 120, 8);
+    g.fillStyle(0x332b22).fillRect(0, feltTop - 4, w, 7);
+    g.fillStyle(0xcba467, 0.75).fillRect(0, feltTop + 1, w, 2);
+    this.windowMask.clear().fillStyle(0xffffff).fillRoundedRect(22, windowTop, w - 44, windowHeight, 8);
     const f = this.frame.clear();
-    f.lineStyle(5, 0x152c25).strokeRoundedRect(21, 17, w - 42, 122, 10);
-    f.lineStyle(1, 0xbba57a, 0.6).strokeRoundedRect(24, 20, w - 48, 116, 6);
-    for (const x of [12, w - 12]) for (const y of [14, 142, h - 16]) {
+    f.lineStyle(7, 0x30291f).strokeRoundedRect(21, windowTop - 1, w - 42, windowHeight + 2, 10);
+    f.lineStyle(2, 0xcaa469, 0.85).strokeRoundedRect(23, windowTop + 1, w - 46, windowHeight - 2, 7);
+    f.lineStyle(1, 0xf4d199, 0.35).lineBetween(31, windowTop - 3, w - 31, windowTop - 3);
+    for (const x of [12, w - 12]) for (const y of [windowTop - 4, feltTop - 3, h - 16]) {
       f.fillStyle(0xb7a276).fillCircle(x, y, 2);
       f.lineStyle(1, 0x554c37).lineBetween(x - 1, y, x + 1, y);
     }
-    this.caption.setFontSize(w < 450 ? 8 : 10);
+    this.caption.setY(compact ? 117 : 157).setFontSize(w < 450 ? 8 : 10);
     this.paintLandscape();
     this.paintCards(false);
     this.paintSignal();
@@ -190,12 +212,13 @@ export class HeistScene extends Phaser.Scene {
     const gap = w < 480 ? 9 : 16;
     const columns = Math.min(hand.length, Math.max(2, Math.floor((w - 44) / (70 + gap))));
     const rows = Math.ceil(hand.length / columns);
-    const availableHeight = h - 192;
+    const { cardsTop } = this.tableGeometry;
+    const availableHeight = h - cardsTop - 11;
     const ch = Math.min(182, (availableHeight - (rows - 1) * gap) / rows);
     const cw = Math.min(124, ch / 1.47, (w - 44 - (columns - 1) * gap) / columns);
     const cardHeight = cw * 1.47;
     const gridHeight = rows * cardHeight + (rows - 1) * gap;
-    const startY = 181 + (availableHeight - gridHeight) / 2;
+    const startY = cardsTop + (availableHeight - gridHeight) / 2;
 
     hand.forEach((card, index) => {
       const row = Math.floor(index / columns);
@@ -228,16 +251,35 @@ export class HeistScene extends Phaser.Scene {
         return label;
       };
       const small = cw < 90;
-      text(10, 7, card.rank, small ? 21 : 29, { fontStyle: 'bold' });
-      text(cw - 12, 10, suit.symbol, small ? 19 : 25).setOrigin(1, 0);
-      this.drawLoot(g, card.suit, cw / 2, cardHeight * 0.47, cw / 115, parseInt(color.slice(1), 16));
-      if (!small) text(cw / 2, cardHeight * 0.65, suit.name.toUpperCase(), 8, { fontFamily: 'monospace', color: '#82745e' }).setOrigin(0.5, 0);
-      text(cw / 2, cardHeight - (small ? 31 : 42), `$${card.loot}`, small ? 20 : 26, { fontStyle: 'bold', color: '#302b23' }).setOrigin(0.5, 0);
+      const rankSize = Math.min(31, Math.max(20, cw * 0.27));
+      const footerHeight = small ? 39 : 46;
+      const artTop = small ? 46 : 54;
+      const artSpace = Math.max(18, cardHeight - footerHeight - artTop - 6);
+      const artY = artTop + artSpace / 2;
+      const tint = { diamonds: 0xe5bc60, clubs: 0xc9a16d, spades: 0xa7afa1, hearts: 0xd9ac82 }[card.suit];
+      text(9, 5, card.rank, rankSize, { fontStyle: 'bold' });
+      text(cw - 10, 8, suit.symbol, small ? 21 : 27).setOrigin(1, 0);
+      const value = card.rank === 'A' ? '1 / 11' : String(card.value);
+      text(10, Math.ceil(rankSize * 1.1) + 7, `VALUE ${value}`, small ? 7 : 8, {
+        fontFamily: 'monospace', color: '#6d5c45', fontStyle: 'bold',
+      });
+      g.fillStyle(tint, 0.22).fillEllipse(cw / 2, artY + 1, cw * 0.72, artSpace * 0.88);
+      this.drawLoot(g, card.suit, cw / 2, artY, Math.min(cw / 100, artSpace / 60), C.ink, true);
+      g.fillStyle(secured ? 0xdce0c6 : 0xecddbc).fillRoundedRect(7, cardHeight - footerHeight, cw - 14, footerHeight - 6, 4);
+      g.lineStyle(1, 0xbca373, 0.5).lineBetween(13, cardHeight - footerHeight, cw - 13, cardHeight - footerHeight);
+      text(cw / 2, cardHeight - (small ? 26 : 30), `$${card.loot}`, small ? 22 : 28, {
+        fontStyle: 'bold', color: '#302b23',
+      }).setOrigin(0.5);
+      text(cw / 2, cardHeight - 11, 'PRINTED LOOT', small ? 6 : 7, {
+        fontFamily: 'monospace', color: '#776448', fontStyle: 'bold',
+      }).setOrigin(0.5, 0);
       if (secured) {
-        g.fillStyle(0x405b3d).fillRoundedRect(7, cardHeight / 2 - 10, cw - 14, 22, 3);
-        text(cw / 2, cardHeight / 2 - 5, 'POCKETED', small ? 8 : 10, { fontFamily: 'monospace', fontStyle: 'bold', color: '#fff0c9' }).setOrigin(0.5, 0);
+        g.fillStyle(0x405b3d).fillRoundedRect(7, artY - 10, cw - 14, 22, 3);
+        g.lineStyle(1, 0xbac593).strokeRoundedRect(7, artY - 10, cw - 14, 22, 3);
+        text(cw / 2, artY - 5, 'POCKETED', small ? 8 : 10, { fontFamily: 'monospace', fontStyle: 'bold', color: '#fff0c9' }).setOrigin(0.5, 0);
       } else if (card.boosted) {
-        text(cw - 7, cardHeight - 13, '×2', 11, { fontFamily: 'monospace', color: '#3c6b44', fontStyle: 'bold' }).setOrigin(1, 0.5);
+        g.fillStyle(0x405b3d).fillRoundedRect(cw - 29, artTop - 1, 23, 16, 3);
+        text(cw - 17.5, artTop + 7, '×2', 10, { fontFamily: 'monospace', color: '#fff0c9', fontStyle: 'bold' }).setOrigin(0.5);
       }
       if (this.snapshot?.phase === 'playing' && !this.snapshot.pocketedId) {
         node.setInteractive(new Phaser.Geom.Rectangle(0, 0, cw, cardHeight), Phaser.Geom.Rectangle.Contains);
@@ -262,7 +304,8 @@ export class HeistScene extends Phaser.Scene {
         back.lineStyle(2, C.gold, 0.8).strokeRoundedRect(5, 5, cw - 10, cardHeight - 10, 4);
         this.drawLoot(back, 'spades', cw / 2, cardHeight / 2, cw / 90, C.gold);
         node.add(back);
-        node.setPosition(w - 55, 132).setScale(0.28, 0.68).setAngle(8).setAlpha(0.4).setData('dealing', true);
+        const dealY = 132 * this.tableGeometry.windowScale + this.tableGeometry.windowOffset;
+        node.setPosition(w - 55, dealY).setScale(0.28, 0.68).setAngle(8).setAlpha(0.4).setData('dealing', true);
         this.tweens.add({
           targets: node, x, y: targetY, scaleX: 1, scaleY: 1, angle: 0, alpha: 1,
           duration: 370, delay: index < 2 && previousIds.size === 0 ? index * 65 : 0,
@@ -327,7 +370,8 @@ export class HeistScene extends Phaser.Scene {
       stamp.setScale(1.55).setAlpha(0);
       this.tweens.add({ targets: stamp, scale: 1, alpha: 1, duration: 180, ease: 'Back.Out',
         onComplete: () => this.tweens.add({ targets: stamp, alpha: 0, scale: 1.2, duration: 260, onComplete: () => stamp.destroy() }) });
-      this.coinBurst(x, y, 7, { x: 49, y: 48 });
+      const pocketY = 48 * this.tableGeometry.windowScale + this.tableGeometry.windowOffset;
+      this.coinBurst(x, y, 7, { x: 49, y: pocketY });
     }
     this.showBanner(`$${this.snapshot.secured.toLocaleString('en-US')} POCKETED`, C.gold, 1000);
   }
@@ -364,7 +408,8 @@ export class HeistScene extends Phaser.Scene {
       this.banner.destroy();
     }
     const w = this.scale.width;
-    const banner = this.add.container(w / 2, 100);
+    const { bannerY } = this.tableGeometry;
+    const banner = this.add.container(w / 2, bannerY);
     const text = this.add.text(0, 0, label, {
       fontFamily: 'Georgia, serif', fontSize: `${w < 420 ? 17 : 22}px`, fontStyle: 'bold',
       color: `#${color.toString(16).padStart(6, '0')}`, align: 'center',
@@ -381,9 +426,9 @@ export class HeistScene extends Phaser.Scene {
     if (this.reducedMotion) {
       this.tweens.add({ targets: banner, alpha: 0, delay: duration, duration: 1, onComplete: () => banner.destroy() });
     } else {
-      banner.setY(108).setAlpha(0).setScale(0.93);
-      this.tweens.add({ targets: banner, y: 100, alpha: 1, scale: 1, duration: 200, ease: 'Back.Out' });
-      this.tweens.add({ targets: banner, alpha: 0, y: 93, delay: duration, duration: 250, onComplete: () => banner.destroy() });
+      banner.setY(bannerY + 8).setAlpha(0).setScale(0.93);
+      this.tweens.add({ targets: banner, y: bannerY, alpha: 1, scale: 1, duration: 200, ease: 'Back.Out' });
+      this.tweens.add({ targets: banner, alpha: 0, y: bannerY - 7, delay: duration, duration: 250, onComplete: () => banner.destroy() });
     }
   }
 
@@ -416,11 +461,12 @@ export class HeistScene extends Phaser.Scene {
       }
     } else {
       const big = ['perfect', 'rank', 'train'].includes(kind);
-      this.coinBurst(w / 2, Math.min(h - 70, 260), big ? 22 : 12);
+      const burstY = this.tableGeometry.compact ? (this.tableGeometry.cardsTop + h - 11) / 2 : Math.min(h - 70, 260);
+      this.coinBurst(w / 2, burstY, big ? 22 : 12);
       if (big) {
         for (let i = 0; i < 9; i++) {
           const x = 40 + ((i * 83) % Math.max(1, w - 80));
-          const y = 188 + (i % 3) * 38;
+          const y = this.tableGeometry.cardsTop + 7 + (i % 3) * 38;
           const star = this.add.graphics({ x, y });
           star.lineStyle(2, C.gold).lineBetween(-5, 0, 5, 0).lineBetween(0, -5, 0, 5);
           this.effectsLayer.add(star);
@@ -432,7 +478,97 @@ export class HeistScene extends Phaser.Scene {
     }
   }
 
-  drawLoot(g, suit, x, y, scale, color) {
+  drawCargo(g, suit, x, y, scale) {
+    const outline = 0x543a29;
+    const points = (vertices) => vertices.map(([px, py]) => ({ x: x + px * scale, y: y + py * scale }));
+    const polygon = (vertices, fill, stroke = outline) => {
+      const path = points(vertices);
+      g.fillStyle(fill).fillPoints(path, true);
+      g.lineStyle(1.8 * scale, stroke).strokePoints(path, true);
+    };
+    const rounded = (px, py, width, height, radius, fill, stroke = outline) => {
+      g.fillStyle(fill).fillRoundedRect(x + px * scale, y + py * scale, width * scale, height * scale, radius * scale);
+      g.lineStyle(1.8 * scale, stroke).strokeRoundedRect(x + px * scale, y + py * scale, width * scale, height * scale, radius * scale);
+    };
+    const line = (x1, y1, x2, y2, color = outline, width = 1.4) => {
+      g.lineStyle(width * scale, color).lineBetween(x + x1 * scale, y + y1 * scale, x + x2 * scale, y + y2 * scale);
+    };
+    const ellipse = (px, py, width, height, fill, stroke = outline) => {
+      g.fillStyle(fill).fillEllipse(x + px * scale, y + py * scale, width * scale, height * scale);
+      g.lineStyle(1.6 * scale, stroke).strokeEllipse(x + px * scale, y + py * scale, width * scale, height * scale);
+    };
+    g.fillStyle(0x65492d, 0.15).fillEllipse(x, y + 25 * scale, 61 * scale, 8 * scale);
+    if (suit === 'diamonds') {
+      // Two stacked ingots and minted coins: warm highlights make gold read at a glance.
+      polygon([[-28, 9], [-21, -2], [10, -2], [17, 9]], 0xf6ce64);
+      polygon([[-28, 9], [17, 9], [17, 21], [-28, 21]], 0xd59a3b);
+      line(-25, 12, 14, 12, 0xffe5a1);
+      polygon([[-15, -7], [-9, -19], [18, -19], [25, -7]], 0xffdc7b);
+      polygon([[-15, -7], [25, -7], [25, 4], [-15, 4]], 0xeab34b);
+      line(-11, -3, 21, -3, 0xffe6a3);
+      polygon([[-9, -19], [18, -19], [25, -7], [20, -7]], 0xe2a343);
+      line(-4, -13, 8, -13, 0xb67d2d);
+      ellipse(21, 17, 18, 16, 0xe6ac43);
+      ellipse(20, 13, 18, 16, 0xffd26a);
+      ellipse(20, 13, 11, 10, 0xefbc53, 0xba8032);
+      line(20, 10, 20, 16, 0x9a652c, 1.8);
+      line(-22, -22, -22, -14, 0xe1ae4c, 1.6);
+      line(-26, -18, -18, -18, 0xe1ae4c, 1.6);
+    } else if (suit === 'clubs') {
+      // Braced planks and a darker side give the freight crate a tangible silhouette.
+      polygon([[-25, -16], [-13, -24], [25, -24], [13, -16]], 0xd8ae73);
+      polygon([[13, -16], [25, -24], [25, 14], [13, 23]], 0x8f603a);
+      rounded(-25, -16, 38, 39, 1, 0xbd8a51);
+      for (const py of [-6, 5, 15]) line(-23, py, 11, py, 0x936439);
+      line(17, -13, 17, 18, 0xb08350);
+      line(22, -18, 22, 14, 0xb08350);
+      polygon([[-25, -16], [-19, -16], [13, 16], [13, 23], [7, 23], [-25, -9]], 0xe2b87e);
+      rounded(-26, -17, 5, 41, 1, 0xd5a268);
+      rounded(9, -17, 5, 41, 1, 0xd5a268);
+      for (const px of [-23.5, 11.5]) for (const py of [-12, 18]) {
+        g.fillStyle(0x63452f).fillCircle(x + px * scale, y + py * scale, 1.2 * scale);
+      }
+      line(-15, 11, -7, 11, 0x795133);
+      line(-12, 15, -3, 15, 0x795133);
+    } else if (suit === 'hearts') {
+      // A trail ration satchel, bread, and a corked canteen distinguish provisions.
+      rounded(-27, -6, 34, 27, 5, 0xbe824e);
+      rounded(-29, -10, 37, 11, 4, 0xe0b37b);
+      rounded(-16, -11, 7, 33, 1, 0x85593c);
+      rounded(-16, 2, 7, 8, 1, 0xd5b16b);
+      line(-12.5, 4, -12.5, 8, 0x6c4c32);
+      ellipse(-14, -15, 28, 13, 0xe7bb76);
+      for (const px of [-20, -13, -6]) line(px - 1, -18, px + 1, -13, 0xb27b43);
+      polygon([[7, -18], [17, -18], [17, -9], [24, -5], [27, 2], [27, 17], [23, 23], [2, 23], [-2, 17], [-2, 2], [1, -5], [7, -9]], 0x668473);
+      rounded(6, -24, 12, 8, 2, 0xc9a36c);
+      rounded(1, 0, 24, 16, 4, 0x8ca18a);
+      line(5, 1, 5, 13, 0xc3d0ac, 2);
+      line(22, -3, 22, 17, 0x476557, 1.5);
+    } else {
+      // Contraband travels in a dark canvas sack sealed with red wax.
+      polygon([[-12, -13], [-16, -26], [-7, -24], [0, -28], [7, -24], [15, -26], [12, -13]], 0x7e8b83);
+      ellipse(0, 5, 45, 43, 0x66776c);
+      g.fillStyle(0x829486, 0.8).fillEllipse(x - 7 * scale, y + 2 * scale, 17 * scale, 30 * scale);
+      line(-8, -23, -5, -15, 0x526358);
+      line(7, -23, 4, -15, 0x526358);
+      line(-14, -12, 13, -12, 0xd5b47d, 3);
+      line(-14, -8, 13, -8, 0xe4c590, 2);
+      line(9, -9, 18, 0, 0xd5b47d, 2);
+      line(11, -9, 21, -7, 0xd5b47d, 2);
+      ellipse(2, 8, 18, 18, 0xac503c);
+      ellipse(2, 8, 11, 11, 0xc46b4e, 0x8b3f30);
+      line(-1, 5, 5, 11, 0xf0be85, 1.6);
+      line(5, 5, -1, 11, 0xf0be85, 1.6);
+      line(-14, 15, -9, 20, 0x4d6054);
+      line(13, 14, 10, 20, 0x4d6054);
+    }
+  }
+
+  drawLoot(g, suit, x, y, scale, color, illustrated = false) {
+    if (illustrated) {
+      this.drawCargo(g, suit, x, y, scale);
+      return;
+    }
     g.lineStyle(2 * scale, color, 0.8);
     g.fillStyle(color, 0.12);
     if (suit === 'diamonds') {

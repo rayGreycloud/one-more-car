@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-Open the local URL Vite prints. The game supports mouse, touch, and keyboard. The welcome screen offers optional sound; audio starts only after pressing **Saddle up**. The header sound button mutes effects and train ambience, and the choice is remembered.
+Open the local URL Vite prints. The game supports mouse, touch, and keyboard. The welcome screen offers optional sound; audio starts only after pressing **Let’s ride**. The header sound button mutes effects and train ambience, and the choice is remembered.
 
 ## Build and preview
 
@@ -34,15 +34,15 @@ The app is a static site. It requires no backend, database, API keys, environmen
 
 ## How to play
 
-- **Search again / H:** draw another card. Above 21, you bust and lose unsecured loot.
-- **Make your escape / S:** cash out the loose haul at the current multiplier.
-- **Pocket / P:** first select a card by clicking it or pressing **1–9**. Pocket its printed value once per carriage. It stays safe through a bust, keeps contributing to the alarm, and no longer earns loose-loot bonuses.
+- **Draw a card / H:** draw another card. Above 21, you bust and lose unsecured loot. The button shows the current chance of busting.
+- **Cash out / S:** end the hand and collect the displayed loose-loot payout.
+- **Pocket / P:** first select a card by clicking it or pressing **1–9**. Pocket its printed loot once per hand. It stays safe through a bust, keeps contributing to the hand total, and no longer earns loose-loot bonuses. Dusty explains the exact payout tradeoff before you choose.
 - **Enter:** advance after a resolved carriage when focus is outside another button.
 - **Inspect the shoe:** see the remaining rank counts; draw order stays hidden.
 
 Aces count as 1 or 11, face cards as 10. Three carriages share a 52-card shoe. Each train starts a fresh shoe and a new cash target; loot from earlier trains does not count toward the next train's target. Payouts round down to whole dollars.
 
-| Alarm | Base escape multiplier |
+| Hand total | Base escape multiplier |
 | --- | --- |
 | 2–11 | ×1 |
 | 12–15 | ×1.25 |
@@ -73,6 +73,10 @@ For a reproducible deal, append an unsigned 32-bit seed to the URL, for example 
 
 ## Game feel and accessibility
 
+Dusty, a cartoon coyote guide, welcomes the player, explains the current risk and pocketing tradeoff, reacts to hand results, and introduces each train's cash target and special rule. His welcome, cheer, and concern expressions match the advice. Suggested actions receive a visual highlight, and updates are announced through the existing screen-reader status region. Guidance uses the real scoring and remaining deck, including soft aces; it does not know the next card.
+
+An illustrated train runs through the welcome screen, camp, and job ticket. Cargo cards have distinct gold, freight, contraband, and provisions artwork, with blackjack value and printed loot labeled separately. The route shows all three trains and marks completed stops. Artwork sources and generation prompts are recorded in [ASSETS.md](ASSETS.md).
+
 Cards deal and turn over, pocketed loot flies into the saddlebag, escapes shower coins, perfect hands sparkle, and busts shake the table. A moving desert, passing frontier buildings, steam, and an alarm lantern bring the train to life. Synthesized card, coin, whistle, reward, and rank-up sounds require no downloaded audio. Train ambience grows slightly quicker as bust risk rises; hiding the tab or muting stops it.
 
 Active equipment bonuses appear beside the payout. Selecting a card previews the exact insurance-versus-payout tradeoff. Keyboard card controls and status announcements accompany the canvas. The app respects the operating system's **reduced motion** preference, including card effects and cash counters.
@@ -82,10 +86,12 @@ Active equipment bonuses appear beside the payout. Selecting a card previews the
 - `src/game.js`: deterministic game rules, train data, and equipment effects.
 - `src/scene.js`: Phaser canvas, card interaction, procedural landscape, and card illustrations.
 - `src/main.js`: accessible controls, dialogs, keyboard input, progression UI, and run flow.
+- `src/guide.js`: rule-aware Dusty dialogue, result explanations, and train briefings.
 - `src/profile.js`: validated career profile, rank thresholds, unlocks, and local storage helpers.
 - `src/audio.js`: procedural sound effects and train ambience with mute/visibility lifecycle handling.
 - `src/style.css`: responsive layout and Old West presentation.
-- `test/game.test.js` and `test/profile.test.js`: automated rules and career tests.
+- `test/game.test.js`, `test/profile.test.js`, and `test/guide.test.js`: automated rules, career, and guidance tests.
+- `public/assets/`: generated character expressions and frontier train illustration.
 - `one-more-car.md`: the original concept; implementation values are defined in `src/game.js`.
 
 Cash targets and multipliers are initial demo balance values. The key playtest question is whether equipment changes which card you pocket and when you choose to escape.
