@@ -39,6 +39,7 @@ The app is a static site. It requires no backend, database, API keys, environmen
 - **Pocket / P:** first select a card by clicking it or pressing **1–9**. Pocket its printed loot once per hand. It stays safe through a bust, keeps contributing to the hand total, and no longer earns loose-loot bonuses. Dusty explains the exact payout tradeoff before you choose.
 - **Enter:** advance after a resolved carriage when focus is outside another button.
 - **Inspect the shoe:** see the remaining rank counts; draw order stays hidden.
+- **Quit game:** available at the top of every pop-up, including the welcome, equipment, and ending screens. Ends the current run, stops audio, and returns to a main menu with **Play again**. Earned reputation, unlocks, completed-run records, and your sound preference are kept; quitting does not count as a completed run.
 
 Aces count as 1 or 11, face cards as 10. Three carriages share a 52-card shoe. Each train starts a fresh shoe and a new cash target; loot from earlier trains does not count toward the next train's target. Payouts round down to whole dollars.
 

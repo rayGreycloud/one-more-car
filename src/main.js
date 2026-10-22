@@ -32,6 +32,7 @@ $('#app').innerHTML = `
     </header>
     <div class="edition-line"><span>A LITTLE LUCK. A LITTLE LARCENY.</span><span>BLACKJACK • TRAIN ROBBERIES • BAD DECISIONS</span></div>
     <div class="rail-route" id="rail-route" aria-label="Your three-train route"></div>
+    <main id="main-menu" class="main-menu" aria-labelledby="menu-title" hidden></main>
     <main class="game-layout">
       <aside class="sidebar" aria-label="Run progress and equipment">
         <section class="job-ticket">
@@ -84,6 +85,7 @@ $('#app').innerHTML = `
 `;
 
 let state = null;
+let atMainMenu = false;
 let selectedId = null;
 let scene = null;
 let dialogKind = '';
@@ -135,10 +137,14 @@ async function enableSound(enabled) {
     soundEnabled = await soundEngine.setEnabled(enabled);
     profile.sound = soundEnabled;
     persistProfile();
-    $('#sound-button').innerHTML = icon(soundEnabled ? 'sound' : 'mute', 20);
-    $('#sound-button').setAttribute('aria-label', soundEnabled ? 'Mute sound' : 'Enable sound');
-    $('#sound-button').title = soundEnabled ? 'Mute sound' : 'Enable sound';
+    renderSoundButton();
   } catch { announce('Sound could not be enabled in this browser. Try the sound button again.'); }
+}
+
+function renderSoundButton() {
+  $('#sound-button').innerHTML = icon(soundEnabled ? 'sound' : 'mute', 20);
+  $('#sound-button').setAttribute('aria-label', soundEnabled ? 'Mute sound' : 'Enable sound');
+  $('#sound-button').title = soundEnabled ? 'Mute sound' : 'Enable sound';
 }
 
 function rewardToast(title, detail) {
@@ -180,9 +186,9 @@ function renderGuide() {
 
 function showDialog(kind, html) {
   dialogKind = kind;
-  $('#dialog-content').innerHTML = html;
+  $('#dialog-content').innerHTML = `<div class="dialog-toolbar"><span>Earned reputation stays with you.</span><button class="button button-escape" data-action="quit" title="End this run and return to the main menu">Quit game</button></div>${html}`;
   if (!dialog.open) dialog.showModal();
-  const first = dialog.querySelector('[autofocus], button');
+  const first = dialog.querySelector('[autofocus]') || dialog.querySelector('.modal-body button');
   first?.focus({ preventScroll: true });
   dialog.scrollTop = 0;
 }
@@ -190,6 +196,24 @@ function showDialog(kind, html) {
 function closeDialog() {
   dialog.close();
   dialogKind = '';
+}
+
+async function quitGame() {
+  closeDialog();
+  state = null;
+  selectedId = null;
+  recentPromotion = null;
+  atMainMenu = true;
+  clearTimeout(toastTimer);
+  $('#reward-toast').hidden = true;
+  // Stop playback without changing the player's saved sound preference.
+  soundEnabled = await soundEngine.setEnabled(false);
+  renderSoundButton();
+  $('#main-menu').innerHTML = `<div class="camp-art railroad-illustration"><span>THE FRONTIER CAN WAIT</span><strong>Back at camp.</strong></div><div class="modal-body welcome-body"><h1 id="menu-title" tabindex="-1">Thanks for riding, partner.</h1>${guideMarkup({ mood: 'welcome', title: 'We’ll ride again another day.', text: 'Your game has ended. Your earned reputation and unlocked gear stay with you.', hint: 'You can close this tab, or start a fresh run whenever you’re ready.' })}${profileSummary()}<button class="button button-primary wide" data-action="welcome">Play again ${icon('arrow', 20)}</button></div>`;
+  render();
+  window.scrollTo({ top: 0 });
+  $('#menu-title').focus({ preventScroll: true });
+  announce('Game ended. Your earned reputation and unlocks are kept. Main menu.');
 }
 
 function showWelcome() {
@@ -211,12 +235,15 @@ function showEnd() {
 }
 
 function reconcileDialog() {
-  if (!state) { if (dialogKind !== 'welcome') showWelcome(); }
+  if (!state) { if (!atMainMenu && dialogKind !== 'welcome') showWelcome(); }
   else if (state.phase === 'camp') { if (dialogKind !== 'camp') showCamp(); }
   else if (['won', 'lost'].includes(state.phase)) { if (dialogKind !== 'end') showEnd(); }
 }
 
 function render() {
+  $('#main-menu').hidden = !atMainMenu;
+  $('.game-layout').hidden = atMainMenu;
+  $('#rail-route').hidden = atMainMenu;
   const focusedCard = document.activeElement?.closest('#hand-access [data-id]')?.dataset.id;
   const train = TRAINS[state?.trainIndex || 0];
   const total = state ? handTotal(state.hand) : 0;
@@ -313,6 +340,7 @@ function render() {
 
 function start(seed) {
   closeDialog();
+  atMainMenu = false;
   selectedId = null;
   recentPromotion = null;
   $('#reward-toast').hidden = true;
@@ -386,9 +414,12 @@ function showReputation() {
 }
 
 async function action(name, element) {
+  if (name === 'quit') return quitGame();
+  if (name === 'welcome') return showWelcome();
   if (name === 'start') {
     const enabled = $('#welcome-sound').checked;
     await enableSound(enabled);
+    if (!dialog.open || !element.isConnected) return;
     return start(linkedSeed ?? randomSeed());
   }
   if (name === 'new-run') return start(randomSeed());

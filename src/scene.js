@@ -608,7 +608,8 @@ export function mountGame(onSelect, onReady) {
     type: Phaser.AUTO,
     parent,
     backgroundColor: '#244238',
-    scale: { mode: Phaser.Scale.RESIZE, width: parent.clientWidth, height: parent.clientHeight },
+    // The observer below skips hidden boards, avoiding zero-size WebGL framebuffers on quit.
+    scale: { mode: Phaser.Scale.NONE, width: parent.clientWidth, height: parent.clientHeight },
     scene: new HeistScene(onSelect, onReady),
     render: { antialias: true, pixelArt: false },
     audio: { noAudio: true },
