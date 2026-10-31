@@ -71,8 +71,9 @@ test('selected-card preview includes insurance, forfeited bonuses, and unchanged
   const before = structuredClone(state);
   const guide = getGuideMessage(state, state.hand[0].id);
   assert.equal(guide.emphasis, 'pocket');
-  assert.match(guide.text, /\$56 safe cash/);
-  assert.match(guide.text, /from \$154 to \$28/);
+  assert.match(guide.text, /lock its \$28 at ×2\.75: \$77 safe cash/);
+  assert.match(guide.hint, /Waiting could lock a bigger multiplier/);
+  assert.match(guide.text, /from \$107 to \$28/);
   assert.match(guide.hint, /hand total stays 16/);
   assert.deepEqual(state, before);
   assert.notEqual(getGuideMessage(state, 'not-a-card').emphasis, 'pocket');
@@ -82,7 +83,7 @@ test('pocketed cash and pending Fast Hands remain distinct from the cash-out pay
   let state = playing([['2', 'clubs'], ['3', 'hearts']], ['fast-hands']);
   state = pocket(state, state.hand[0].id);
   let guide = getGuideMessage(state);
-  assert.match(guide.text, /\$12 stays yours even if you bust/);
+  assert.match(guide.text, /\$12 is locked in at ×1 and stays yours even if you bust/);
   assert.match(guide.text, /next drawn card earns double loose loot/);
   assert.equal(guide.emphasis, 'hit');
   state = drawNext(state, '4', 'diamonds');
@@ -98,21 +99,22 @@ test('bust results preserve insurance and report the true remaining target', () 
   const guide = getGuideMessage(state);
   assert.equal(state.result.busted, true);
   assert.equal(guide.mood, 'concern');
-  assert.match(guide.text, /pocketed \$56 stayed safe/);
-  assert.match(guide.hint, /\$124 still needed, with 2 carriages left/);
+  assert.match(guide.text, /pocketed \$77 stayed safe/);
+  assert.match(guide.hint, /\$123 still needed, with 2 carriages left/);
   assert.equal(guide.emphasis, null);
 });
 
 test('successful results announce next train rules without making the side job mandatory', () => {
   let state = playing([['10', 'diamonds'], ['8', 'clubs']], ['all-or-nothing']);
+  state.trainLoot = 60;
   state = stand(state);
   let guide = getGuideMessage(state);
-  assert.equal(state.result.total, 230);
+  assert.equal(state.result.total, 161);
   assert.equal(state.sideJobComplete, false);
-  assert.match(guide.text, /\$230 kept: \$230 cashed out and \$0 already pocketed/);
+  assert.match(guide.text, /\$161 kept: \$161 cashed out and \$0 already pocketed/);
   assert.ok(guide.text.includes(TRAINS[1].name));
   assert.ok(guide.text.includes(TRAINS[1].description));
-  assert.match(guide.hint, /remaining 2 carriages to ride on, or complete the optional side job/);
+  assert.match(guide.hint, /Anything extra rides with you to the next train\. Play the remaining 2 carriages to ride on, or complete the optional side job/);
   state = stand(advance(state));
   state = stand(advance(state));
   guide = getGuideMessage(state);
@@ -121,7 +123,8 @@ test('successful results announce next train rules without making the side job m
   assert.equal(state.phase, 'camp');
   guide = getGuideMessage(state);
   assert.equal(guide.title, TRAINS[1].name);
-  assert.match(guide.text, /\$340/);
+  assert.match(guide.text, /\$420/);
+  assert.match(guide.text, new RegExp(`The \\$${state.carriedIn} you carried over already counts`));
   assert.match(guide.text, /extra \$10/);
 });
 
@@ -150,6 +153,6 @@ test('early departure, final victory, and failure guidance match progression rul
   state = advance(state);
   assert.equal(state.phase, 'lost');
   assert.equal(getGuideMessage(state).mood, 'concern');
-  assert.match(getGuideMessage(state).text, /\$23 of the \$180 needed/);
+  assert.match(getGuideMessage(state).text, /\$23 of the \$200 needed/);
   assert.match(getGuideMessage(state).hint, /reputation stays/);
 });
