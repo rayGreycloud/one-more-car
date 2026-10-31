@@ -1,15 +1,16 @@
 import { TRAINS, SIDE_JOBS, handTotal, payout, pocket, bustRisk } from './game.js';
 
 const money = (value) => `$${value.toLocaleString('en-US')}`;
+const times = (value) => `×${Number(value.toFixed(3))}`;
 const message = (mood, eyebrow, title, text, hint, emphasis = null) => ({ mood, eyebrow, title, text, hint, emphasis });
 
-export function getTrainBriefing(trainIndex) {
+export function getTrainBriefing(trainIndex, carried = 0) {
   if (!Number.isInteger(trainIndex) || !TRAINS[trainIndex]) throw new RangeError('Unknown train.');
   const train = TRAINS[trainIndex];
   const rule = train.modifier === 'none'
     ? 'Draw cards for more loot, then cash out at 21 or less.' : train.description;
   return message('welcome', `JOB ${trainIndex + 1} OF ${TRAINS.length}`, train.name,
-    `You need ${money(train.target)} across three carriages. ${rule}`,
+    `You need ${money(train.target)} across three carriages.${carried > 0 ? ` The ${money(carried)} you carried over already counts.` : ''} ${rule}`,
     'Choose one free piece of gear. The cash target is required; the side job is optional.');
 }
 
@@ -38,7 +39,7 @@ function resultMessage(state) {
     } else if (state.sideJobComplete) {
       hint = `Both goals met. Leave now to ${nextTrain ? 'ride on' : 'win'}, or play ${left} more ${left === 1 ? 'carriage' : 'carriages'} for extra rewards.`;
     } else {
-      hint = `Cash target met. Play the remaining ${left} ${left === 1 ? 'carriage' : 'carriages'} to ${nextTrain ? 'ride on' : 'win'}, or complete the optional side job to leave early.`;
+      hint = `Cash target met.${nextTrain ? ' Anything extra rides with you to the next train.' : ''} Play the remaining ${left} ${left === 1 ? 'carriage' : 'carriages'} to ${nextTrain ? 'ride on' : 'win'}, or complete the optional side job to leave early.`;
     }
   }
   return message(result.busted ? 'concern' : 'cheer', `CARRIAGE ${state.carriageIndex + 1} RESULT`,
@@ -50,7 +51,7 @@ function resultMessage(state) {
 export function getGuideMessage(state, selectedId = null) {
   if (!state) {
     return message('welcome', 'YOUR TRAIL GUIDE', "I'm Dusty. Let's ride!",
-      'Draw cards for loot. Cash out at 21 or less. Pocket one find to keep its cash safe if you bust.',
+      'Draw cards for loot. Cash out at 21 or less. Pocket one find to lock in its cash at the current multiplier, even if you bust.',
       'Clear each train’s cash target to ride on. Side jobs are optional.');
   }
   if (state.phase === 'won') {
@@ -65,7 +66,7 @@ export function getGuideMessage(state, selectedId = null) {
       'Your reputation stays. Try another gear choice on your next run.');
   }
   if (state.phase === 'camp') {
-    const briefing = getTrainBriefing(state.trainIndex);
+    const briefing = getTrainBriefing(state.trainIndex, state.carriedIn);
     const job = SIDE_JOBS.find((item) => item.id === state.sideJobId);
     return { ...briefing, hint: `Choose one free piece of gear. ${job.name} is an optional side job worth ${job.reward} REP.` };
   }
@@ -79,8 +80,9 @@ export function getGuideMessage(state, selectedId = null) {
   if (selected) {
     const secured = pocket(state, selected.id);
     return message('welcome', 'POCKET PREVIEW', 'Here’s the tradeoff.',
-      `Pocket the ${selected.rank} of ${selected.suit} for ${money(secured.secured)} safe cash. Cash-out payout changes from ${money(score)} to ${money(payout(secured).amount)}.`,
-      `Your hand total stays ${total}. That card still counts toward 21.`, 'pocket');
+      `Pocket the ${selected.rank} of ${selected.suit} to lock its ${money(selected.loot)} at ${times(secured.pocketMultiplier)}: ${money(secured.secured)} safe cash. Cash-out payout changes from ${money(score)} to ${money(payout(secured).amount)}.`,
+      total === 21 ? `Your hand total stays ${total}. That card still counts toward 21.`
+        : `Your hand total stays ${total}. Waiting could lock a bigger multiplier, if you don’t bust first.`, 'pocket');
   }
   if (total === 21) {
     return message('cheer', 'PERFECT TOTAL', 'Twenty-one. Time to vanish.',
@@ -94,7 +96,7 @@ export function getGuideMessage(state, selectedId = null) {
         ? `${percent}% chance of busting on the next draw. Cash out ${money(score)} to keep the loose loot too.`
         : `Cash out ${money(score)}, or draw a card with a ${percent}% bust risk.`;
     return message(risk >= 0.6 ? 'concern' : 'welcome', 'POCKET USED', state.boostNext ? 'Fast hands, careful feet.' : 'Your stash is safe.',
-      `${money(state.secured)} stays yours even if you bust. The pocketed card still counts toward 21.${state.boostNext ? ' Your next drawn card earns double loose loot.' : ''}`,
+      `${money(state.secured)} is locked in at ${times(state.pocketMultiplier)} and stays yours even if you bust. The pocketed card still counts toward 21.${state.boostNext ? ' Your next drawn card earns double loose loot.' : ''}`,
       hint, risk === 0 ? 'hit' : risk >= 0.6 ? 'stand' : null);
   }
   if (risk === 0) {
@@ -105,9 +107,10 @@ export function getGuideMessage(state, selectedId = null) {
   if (risk >= 0.6) {
     return message('concern', 'WATCH YOUR STEP', 'Getting mighty close.',
       `${percent}% of the remaining cards would bust this hand. Cash out now to collect ${money(score)}.`,
-      'Still feeling bold? Select a card to preview pocketing some cash first.', 'stand');
+      state.gear.includes('all-or-nothing') ? 'Pocketing now would forfeit All or Nothing’s ×2 payout.'
+        : 'Still feeling bold? Pocket a find first to lock in this multiplier.', 'stand');
   }
   return message('welcome', 'YOUR NEXT MOVE', 'A promising haul, partner.',
     `Your hand totals ${total}. Cash out ${money(score)}, or draw a card with a ${percent}% bust risk.`,
-    'You can pocket one find first. Its cash survives a bust; its card still counts toward 21.');
+    'You can pocket one find first. It locks in this multiplier and survives a bust; its card still counts toward 21.');
 }

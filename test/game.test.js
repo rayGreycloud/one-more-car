@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRun, chooseEquipment, makeDeck, handTotal, pocket, hit, stand, advance, leaveTrain, payout, bustRisk, TRAINS, SIDE_JOBS } from '../src/game.js';
+import { createRun, chooseEquipment, makeDeck, handTotal, pocket, pocketValue, hit, stand, advance, leaveTrain, payout, bustRisk, TRAINS, SIDE_JOBS } from '../src/game.js';
 
 const card = (rank, suit = 'clubs') => makeDeck().find((item) => item.rank === rank && item.suit === suit);
 function hand(ranks, gear = []) {
@@ -30,7 +30,8 @@ test('pocketing keeps the alarm, removes loose value, and is allowed only once',
   const id = before.hand[0].id;
   const after = pocket(before, id);
   assert.equal(handTotal(after.hand), 16);
-  assert.equal(after.secured, before.hand[0].loot);
+  assert.equal(after.secured, Math.floor(before.hand[0].loot * 1.75));
+  assert.equal(after.pocketMultiplier, 1.75);
   assert.equal(payout(after).base, before.hand[1].loot);
   assert.equal(pocket(after, before.hand[1].id), after);
   assert.equal(pocket(before, 'missing'), before);
@@ -41,7 +42,7 @@ test('busting preserves secured cash and settlement cannot pay twice', () => {
   let state = hand(['10', '6'], ['false-bottom']);
   state = pocket(state, state.hand[0].id);
   const banked = state.secured;
-  assert.equal(banked, state.hand[0].loot * 2);
+  assert.equal(banked, Math.floor(state.hand[0].loot * 2.75));
   state.deck = [card('K')];
   state = hit(state);
   assert.equal(state.phase, 'result');
@@ -52,6 +53,24 @@ test('busting preserves secured cash and settlement cannot pay twice', () => {
   assert.equal(stand(state), state);
   assert.equal(hit(state), state);
   assert.equal(pocket(state, state.hand[1].id), state);
+});
+
+test('pocketing locks the current getaway multiplier, never below ×1', () => {
+  const low = hand(['2', '3']);
+  assert.equal(pocket(low, low.hand[0].id).secured, low.hand[0].loot);
+  const high = hand(['10', '9']);
+  let state = pocket(high, high.hand[0].id);
+  assert.equal(state.secured, Math.floor(high.hand[0].loot * 2.5));
+  state.deck = [card('2', 'diamonds')];
+  state = stand(hit(state));
+  assert.equal(state.result.alarm, 21);
+  assert.equal(state.result.secured, Math.floor(high.hand[0].loot * 2.5));
+  const perfect = hand(['A', 'K'], ['lucky-horseshoe']);
+  assert.deepEqual(pocketValue(perfect, perfect.hand[1].id), { locked: 10, multiplier: 10, amount: perfect.hand[1].loot * 10 });
+  const escort = hand(['10', '6']);
+  escort.trainIndex = 2;
+  assert.equal(pocketValue(escort, escort.hand[0].id).multiplier, 1);
+  assert.equal(pocketValue(escort, 'missing'), null);
 });
 
 test('a clean escape includes the pocket payout once, not twice', () => {
@@ -70,20 +89,22 @@ test('Fast Hands boosts exactly the next draw, not printed pocket value', () => 
   state = pocket(state, state.hand[0].id);
   state = hit(state);
   assert.equal(state.hand[2].boosted, true);
-  assert.equal(payout(state).base, state.hand[1].loot + state.hand[2].loot * 2);
+  assert.equal(payout(state).base, state.hand[1].loot + state.hand[2].loot * 3);
   state = hit(state);
   assert.equal(state.hand[3].boosted, false);
 });
 
 test('equipment changes the scoring incentives and composes correctly', () => {
   let state = hand(['A', 'K'], ['all-or-nothing', 'lucky-horseshoe']);
-  assert.equal(payout(state).escape, 6);
-  assert.equal(payout(state).gearMultiplier, 2);
+  assert.equal(payout(state).escape, 10);
+  assert.equal(payout(state).gearMultiplier, 1.4);
   state = pocket(state, state.hand[0].id);
   assert.equal(payout(state).gearMultiplier, 1);
-  state = hand(['2', '3', '4', '2', '3'], ['light-fingers', 'payroll-tip']);
+  state = hand(['2', '3', '4', '2'], ['light-fingers', 'payroll-tip']);
   assert.equal(payout(state).gearMultiplier, 2);
-  assert.equal(payout(state).base, state.hand.reduce((sum, item) => sum + item.loot * (item.suit === 'diamonds' ? 2 : 1), 0));
+  assert.equal(payout(state).base, state.hand.reduce((sum, item) => sum + (item.suit === 'diamonds' ? Math.floor(item.loot * 1.75) : item.loot), 0));
+  state.hand.pop();
+  assert.equal(payout(state).gearMultiplier, 1);
 });
 
 test('train modifiers affect printed diamond loot and sub-18 escapes', () => {
@@ -199,22 +220,24 @@ test('newly unlocked equipment receives a slot at the next camp and completed si
   }
 });
 
-test('Steady Nerves rewards exactly 20 and Mixed Cargo counts only unsecured suits', () => {
+test('Steady Nerves rewards 18–20 and Mixed Cargo counts only unsecured suits', () => {
   let state = hand(['K', 'Q'], ['steady-nerves', 'all-or-nothing']);
-  assert.equal(payout(state).escape, 3.5);
-  assert.equal(payout(state).gearMultiplier, 2);
-  state.hand[1] = card('9');
-  assert.equal(payout(state).escape, 2.5);
+  assert.equal(payout(state).escape, 3.25);
+  assert.equal(payout(state).gearMultiplier, 1.4);
+  state.hand[1] = card('8');
+  assert.equal(payout(state).escape, 3.25);
+  state.hand[1] = card('7');
+  assert.equal(payout(state).escape, 1.75);
   state.hand[1] = card('A');
   assert.equal(payout(state).escape, 4);
   state = hand(['2', '3', '4'], ['mixed-cargo', 'all-or-nothing']);
-  assert.equal(payout(state).gearMultiplier, 3);
+  assert.equal(payout(state).gearMultiplier, 3.5);
   state = pocket(state, state.hand[0].id);
   assert.equal(payout(state).gearMultiplier, 1);
   state = hand(['2', '3', '4', '2'], ['mixed-cargo']);
   state.hand[3] = card('5', 'clubs');
   state = pocket(state, state.hand[0].id);
-  assert.equal(payout(state).gearMultiplier, 1.5);
+  assert.equal(payout(state).gearMultiplier, 2.5);
 });
 
 test('resolved hands grant reputation once, including insurance busts', () => {
@@ -276,12 +299,13 @@ test('early departure requires both objectives and grants no rewards for skipped
   let state = chooseEquipment(createRun(2), createRun(2).offers[0]);
   state.gear = [];
   state.hand = [card('A', 'clubs'), card('K', 'diamonds')];
+  state.trainLoot = 20;
   assert.equal(leaveTrain(state), state);
   state = stand(state);
-  assert.equal(state.trainLoot, 184);
+  assert.equal(state.trainLoot, 204);
   assert.equal(state.sideJobComplete, true);
   assert.equal(state.reputationEarned, 17);
-  const insufficient = { ...state, trainLoot: 179 };
+  const insufficient = { ...state, trainLoot: 199 };
   assert.equal(leaveTrain(insufficient), insufficient);
   const unfinished = { ...state, sideJobComplete: false };
   assert.equal(leaveTrain(unfinished), unfinished);
@@ -297,7 +321,8 @@ test('early departure requires both objectives and grants no rewards for skipped
   assert.equal(next.reputationEarned, 25);
   assert.equal(next.rewards.filter((reward) => reward.id.endsWith('resolved')).length, 1);
   assert.equal(next.totalLoot, 184);
-  assert.equal(next.trainLoot, 0);
+  assert.equal(next.carriedIn, 4);
+  assert.equal(next.trainLoot, 4);
   assert.ok(next.offers.includes('steady-nerves'));
   assert.equal(leaveTrain(next), next);
   assert.equal(advance(next), next);
@@ -337,18 +362,18 @@ test('scoring feedback follows active loose-loot effects and disappears after a 
   assert.deepEqual(payout(state).bonuses, []);
   state = hit(state);
   assert.deepEqual(payout(state).bonuses, [
-    { id: 'fast-hands', label: 'Fast Hands', detail: 'Boosted find ×2' },
-    { id: 'payroll-tip', label: 'Payroll Tip', detail: 'Diamonds ×2' },
+    { id: 'fast-hands', label: 'Fast Hands', detail: 'Boosted find ×3' },
+    { id: 'payroll-tip', label: 'Payroll Tip', detail: 'Diamonds ×1.75' },
   ]);
   state = hit(state);
   const score = payout(state);
   assert.deepEqual(score.bonuses, [
-    { id: 'fast-hands', label: 'Fast Hands', detail: 'Boosted find ×2' },
-    { id: 'payroll-tip', label: 'Payroll Tip', detail: 'Diamonds ×2' },
-    { id: 'mixed-cargo', label: 'Mixed Cargo', detail: 'Payout ×1.5' },
+    { id: 'fast-hands', label: 'Fast Hands', detail: 'Boosted find ×3' },
+    { id: 'payroll-tip', label: 'Payroll Tip', detail: 'Diamonds ×1.75' },
+    { id: 'mixed-cargo', label: 'Mixed Cargo', detail: 'Payout ×2.5' },
   ]);
-  assert.equal(score.base, 114);
-  assert.equal(score.amount, 213);
+  assert.equal(score.base, 141);
+  assert.equal(score.amount, 440);
   state.deck = [card('10', 'spades')];
   state = hit(state);
   assert.equal(state.result.busted, true);
@@ -371,23 +396,23 @@ test('pocketing removes feedback for forfeited bonuses and False Bottom is not a
 
 test('getaway and whole-payout feedback identify exactly the multipliers that apply', () => {
   let state = hand(['A', 'K'], ['lucky-horseshoe', 'steady-nerves']);
-  assert.deepEqual(payout(state).bonuses, [{ id: 'lucky-horseshoe', label: 'Lucky Horseshoe', detail: 'Getaway ×6' }]);
+  assert.deepEqual(payout(state).bonuses, [{ id: 'lucky-horseshoe', label: 'Lucky Horseshoe', detail: 'Getaway ×10' }]);
   state.hand[0] = card('10', 'clubs');
-  assert.deepEqual(payout(state).bonuses, [{ id: 'steady-nerves', label: 'Steady Nerves', detail: 'Getaway ×3.5' }]);
-  state.hand[0] = card('9', 'clubs');
+  assert.deepEqual(payout(state).bonuses, [{ id: 'steady-nerves', label: 'Steady Nerves', detail: 'Getaway ×3.25' }]);
+  state.hand[0] = card('6', 'clubs');
   assert.deepEqual(payout(state).bonuses, []);
   state.hand[0] = card('7', 'clubs');
   state.trainIndex = 2;
   assert.deepEqual(payout(state).bonuses, [{ id: 'federal-escort', label: 'Federal Escort', detail: 'Getaway ×½' }]);
   state.hand[0] = card('8', 'clubs');
-  assert.deepEqual(payout(state).bonuses, []);
-  state = hand(['2', '3', '4', '2', '3'], ['all-or-nothing', 'light-fingers']);
+  assert.deepEqual(payout(state).bonuses, [{ id: 'steady-nerves', label: 'Steady Nerves', detail: 'Getaway ×3.25' }]);
+  state = hand(['2', '3', '4', '2'], ['all-or-nothing', 'light-fingers']);
   assert.deepEqual(payout(state).bonuses, [
-    { id: 'all-or-nothing', label: 'All or Nothing', detail: 'Payout ×2' },
+    { id: 'all-or-nothing', label: 'All or Nothing', detail: 'Payout ×1.4' },
     { id: 'light-fingers', label: 'Light Fingers', detail: 'Payout ×2' },
   ]);
-  assert.equal(payout(state).gearMultiplier, 4);
+  assert.equal(payout(state).gearMultiplier, 2.8);
   state.hand.pop();
-  assert.deepEqual(payout(state).bonuses, [{ id: 'all-or-nothing', label: 'All or Nothing', detail: 'Payout ×2' }]);
-  assert.equal(payout(state).gearMultiplier, 2);
+  assert.deepEqual(payout(state).bonuses, [{ id: 'all-or-nothing', label: 'All or Nothing', detail: 'Payout ×1.4' }]);
+  assert.equal(payout(state).gearMultiplier, 1.4);
 });

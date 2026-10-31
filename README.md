@@ -36,12 +36,12 @@ The app is a static site. It requires no backend, database, API keys, environmen
 
 - **Draw a card / H:** draw another card. Above 21, you bust and lose unsecured loot. The button shows the current chance of busting.
 - **Cash out / S:** end the hand and collect the displayed loose-loot payout.
-- **Pocket / P:** first select a card by clicking it or pressing **1–9**. Pocket its printed loot once per hand. It stays safe through a bust, keeps contributing to the hand total, and no longer earns loose-loot bonuses. Dusty explains the exact payout tradeoff before you choose.
+- **Pocket / P:** first select a card by clicking it or pressing **1–9**. Once per hand, pocket its printed loot at the getaway multiplier your hand earns right now (never below ×1). The locked cash stays safe through a bust and keeps that multiplier even if your total changes. The card keeps contributing to the hand total and no longer earns loose-loot bonuses. Pocket early for cheap insurance, or wait to lock a bigger multiplier and risk busting first. Dusty explains the exact payout tradeoff before you choose.
 - **Enter:** advance after a resolved carriage when focus is outside another button.
 - **Inspect the shoe:** see the remaining rank counts; draw order stays hidden.
 - **Quit game:** available at the top of every pop-up, including the welcome, equipment, and ending screens. Ends the current run, stops audio, and returns to a main menu with **Play again**. Earned reputation, unlocks, completed-run records, and your sound preference are kept; quitting does not count as a completed run.
 
-Aces count as 1 or 11, face cards as 10. Three carriages share a 52-card shoe. Each train starts a fresh shoe and a new cash target; loot from earlier trains does not count toward the next train's target. Payouts round down to whole dollars.
+Aces count as 1 or 11, face cards as 10. Three carriages share a 52-card shoe. Each train starts a fresh shoe and a new cash target (00, 20, 60). Cash above a target rides with you: the surplus becomes the next train's starting haul, so every carriage matters even after a target is met. Payouts round down to whole dollars.
 
 | Hand total | Base escape multiplier |
 | --- | --- |
@@ -51,7 +51,7 @@ Aces count as 1 or 11, face cards as 10. Three carriages share a 52-card shoe. E
 | 18–20 | ×2.5 |
 | 21 | ×4 |
 
-Choose one free equipment item before each train. Gear stacks across the run, with three slots in total. The second train carries richer diamonds; the final train halves escape multipliers below 18. The live payout preview includes active equipment and train modifiers.
+Choose one free equipment item before each train. Gear stacks across the run, with three slots in total. The second train carries richer diamonds; the final train halves escape multipliers below 18. The live payout preview includes active equipment and train modifiers. A pocketed card locks the escape multiplier shown when you pocket it, including Lucky Horseshoe, Steady Nerves, and Federal Escort; False Bottom adds +1 to that locked multiplier.
 
 Each train also has an optional **side job** worth 10 reputation: pocket and escape at 18–21, escape with four cards, or finish at exactly 21. Once both the cash target and side job are complete, you can leave early. Staying earns additional cash and carriage reputation; leaving skips those rewards. Normal train completion requires only the cash target.
 
@@ -62,8 +62,8 @@ Reputation is awarded immediately: +2 for finishing a carriage (including busts)
 | Rank | Career reputation | Reward |
 | --- | --- | --- |
 | Greenhorn | 0 | Six starting equipment choices |
-| Bandit | 20 | Steady Nerves: exactly 20 pays ×3.5 |
-| Outlaw | 70 | Mixed Cargo: three unsecured suits give ×1.5 |
+| Bandit | 20 | Steady Nerves: escapes at 18–20 pay ×3.25 |
+| Outlaw | 70 | Mixed Cargo: three unsecured suits give ×2.5 |
 | Legend | 150 | Golden table and badge |
 
 Unlocks add equipment choices; each run still starts with an empty kit. Promotions during a run put a newly unlocked item in the next camp's offers. The reputation panel shows ranks, unlocks, and reward amounts. The ending screen shows this run's reputation, career best take, and completed wins.
@@ -95,4 +95,4 @@ Active equipment bonuses appear beside the payout. Selecting a card previews the
 - `public/assets/`: generated character expressions and frontier train illustration.
 - `one-more-car.md`: the original concept; implementation values are defined in `src/game.js`.
 
-Cash targets and multipliers are initial demo balance values. The key playtest question is whether equipment changes which card you pocket and when you choose to escape.
+Gear values and cash targets come from simulating full runs: a sensible player wins about half of runs with any gear, and each item raises a run's win rate by a similar amount. They are set in `GEAR` and `TRAINS` in `src/game.js`. The key playtest question is whether equipment changes which card you pocket and when you choose to escape.

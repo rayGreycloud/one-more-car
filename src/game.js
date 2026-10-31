@@ -6,14 +6,14 @@ export const SUITS = [
 ];
 
 export const EQUIPMENT = [
-  { id: 'false-bottom', name: 'False Bottom', icon: 'bag', label: 'PLAY IT SAFE', description: 'Pocketed finds pay twice their printed value.' },
-  { id: 'fast-hands', name: 'Fast Hands', icon: 'bolt', label: 'KEEP MOVING', description: 'Pocket a find. Your next drawn card is worth twice as much loose loot.' },
-  { id: 'all-or-nothing', name: 'All or Nothing', icon: 'star', label: 'BET THE FARM', description: 'Escape without pocketing a card for a ×2 payout.' },
-  { id: 'light-fingers', name: 'Light Fingers', icon: 'hand', label: 'TRAVEL LIGHT', description: 'Escape with five or more cards for a ×2 payout.' },
-  { id: 'payroll-tip', name: 'Payroll Tip', icon: 'diamond', label: 'INSIDE INFORMATION', description: 'Unsecured diamonds contribute twice their printed loot value.' },
-  { id: 'lucky-horseshoe', name: 'Lucky Horseshoe', icon: 'shoe', label: 'MAKE YOUR OWN LUCK', description: 'Exactly 21 pays ×6 instead of ×4.' },
-  { id: 'steady-nerves', name: 'Steady Nerves', icon: 'star', label: 'HOLD YOUR NERVE', description: 'Exactly 20 pays ×3.5 instead of ×2.5.' },
-  { id: 'mixed-cargo', name: 'Mixed Cargo', icon: 'deck', label: 'A LITTLE OF EVERYTHING', description: 'Escape with three different unsecured suits for a ×1.5 payout.' },
+  { id: 'false-bottom', name: 'False Bottom', icon: 'bag', label: 'PLAY IT SAFE', description: 'Pocketing locks in your getaway multiplier +1.' },
+  { id: 'fast-hands', name: 'Fast Hands', icon: 'bolt', label: 'KEEP MOVING', description: 'Pocket a find. Your next drawn card is worth three times as much loose loot.' },
+  { id: 'all-or-nothing', name: 'All or Nothing', icon: 'star', label: 'BET THE FARM', description: 'Escape without pocketing a card for a ×1.4 payout.' },
+  { id: 'light-fingers', name: 'Light Fingers', icon: 'hand', label: 'TRAVEL LIGHT', description: 'Escape with four or more cards for a ×2 payout.' },
+  { id: 'payroll-tip', name: 'Payroll Tip', icon: 'diamond', label: 'INSIDE INFORMATION', description: 'Unsecured diamonds contribute ×1.75 their printed loot value.' },
+  { id: 'lucky-horseshoe', name: 'Lucky Horseshoe', icon: 'shoe', label: 'MAKE YOUR OWN LUCK', description: 'Exactly 21 pays ×10 instead of ×4.' },
+  { id: 'steady-nerves', name: 'Steady Nerves', icon: 'star', label: 'HOLD YOUR NERVE', description: 'Escapes at 18–20 pay ×3.25 instead of ×2.5.' },
+  { id: 'mixed-cargo', name: 'Mixed Cargo', icon: 'deck', label: 'A LITTLE OF EVERYTHING', description: 'Escape with three different unsecured suits for a ×2.5 payout.' },
 ];
 
 const BASE_GEAR = new Set(EQUIPMENT.slice(0, 6).map((item) => item.id));
@@ -25,13 +25,20 @@ export const SIDE_JOBS = [
 ];
 
 export const TRAINS = [
-  { name: 'The Sundown Local', place: 'DRY CREEK → RED ROCK', target: 180, rule: 'An easy mark', description: 'Three carriages. One fresh deck. Make $180 to ride on.', modifier: 'none' },
-  { name: 'The Gilded Express', place: 'RED ROCK → COPPER RIDGE', target: 340, rule: 'Armored payroll', description: 'Every diamond carries an extra $10 in printed loot.', modifier: 'payroll' },
-  { name: 'The Last Train West', place: 'COPPER RIDGE → FREEDOM', target: 480, rule: 'Federal escort', description: 'Escapes below 18 earn only half their usual multiplier.', modifier: 'escort' },
+  { name: 'The Sundown Local', place: 'DRY CREEK → RED ROCK', target: 200, rule: 'An easy mark', description: 'Three carriages. One fresh deck. Make $200 to ride on.', modifier: 'none' },
+  { name: 'The Gilded Express', place: 'RED ROCK → COPPER RIDGE', target: 420, rule: 'Armored payroll', description: 'Every diamond carries an extra $10 in printed loot.', modifier: 'payroll' },
+  { name: 'The Last Train West', place: 'COPPER RIDGE → FREEDOM', target: 560, rule: 'Federal escort', description: 'Escapes below 18 earn only half their usual multiplier.', modifier: 'escort' },
 ];
 
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 const has = (state, id) => state.gear.includes(id);
+// Payouts round down to whole dollars; the epsilon absorbs float error such as 45 × 1.4 = 62.999….
+const whole = (value) => Math.floor(value + 1e-9);
+// Gear tuning, balanced by simulating full runs: each item lifts a run's win rate by a similar amount.
+const GEAR = {
+  fastHands: 3, allOrNothing: 1.4, payrollTip: 1.75, horseshoe: 10, steadyNerves: 3.25,
+  lightFingers: { cards: 4, multiplier: 2 }, mixedCargo: { suits: 3, multiplier: 2.5 },
+};
 
 function random(state) {
   state.rng = (state.rng + 0x6d2b79f5) >>> 0;
@@ -78,12 +85,12 @@ function escapeScore(total, state) {
   if (total > 21) return { multiplier: 0, bonuses };
   let multiplier = total === 21 ? 4 : total >= 18 ? 2.5 : total >= 16 ? 1.75 : total >= 12 ? 1.25 : 1;
   if (total === 21 && has(state, 'lucky-horseshoe')) {
-    multiplier = 6;
-    bonuses.push(gearBonus('lucky-horseshoe', 'Getaway ×6'));
+    multiplier = GEAR.horseshoe;
+    bonuses.push(gearBonus('lucky-horseshoe', `Getaway ×${GEAR.horseshoe}`));
   }
-  if (total === 20 && has(state, 'steady-nerves')) {
-    multiplier = 3.5;
-    bonuses.push(gearBonus('steady-nerves', 'Getaway ×3.5'));
+  if (total >= 18 && total <= 20 && has(state, 'steady-nerves')) {
+    multiplier = GEAR.steadyNerves;
+    bonuses.push(gearBonus('steady-nerves', `Getaway ×${GEAR.steadyNerves}`));
   }
   if (TRAINS[state.trainIndex].modifier === 'escort' && total < 18) {
     multiplier *= 0.5;
@@ -104,22 +111,33 @@ export function payout(state) {
     const payroll = has(state, 'payroll-tip') && card.suit === 'diamonds';
     boostedLoot ||= card.boosted;
     payrollLoot ||= payroll;
-    return sum + card.loot * (card.boosted ? 2 : 1) * (payroll ? 2 : 1);
+    return sum + whole(card.loot * (card.boosted ? GEAR.fastHands : 1) * (payroll ? GEAR.payrollTip : 1));
   }, 0);
   const total = handTotal(state.hand);
   const { multiplier: escape, bonuses } = escapeScore(total, state);
   const allOrNothing = has(state, 'all-or-nothing') && !state.pocketedId;
-  const lightFingers = has(state, 'light-fingers') && state.hand.length >= 5;
-  const mixedCargo = has(state, 'mixed-cargo') && new Set(loose.map((card) => card.suit)).size >= 3;
-  const gearMultiplier = (allOrNothing ? 2 : 1) * (lightFingers ? 2 : 1) * (mixedCargo ? 1.5 : 1);
+  const lightFingers = has(state, 'light-fingers') && state.hand.length >= GEAR.lightFingers.cards;
+  const mixedCargo = has(state, 'mixed-cargo') && new Set(loose.map((card) => card.suit)).size >= GEAR.mixedCargo.suits;
+  const gearMultiplier = (allOrNothing ? GEAR.allOrNothing : 1) * (lightFingers ? GEAR.lightFingers.multiplier : 1)
+    * (mixedCargo ? GEAR.mixedCargo.multiplier : 1);
   if (total <= 21) {
-    if (boostedLoot) bonuses.push(gearBonus('fast-hands', 'Boosted find ×2'));
-    if (payrollLoot) bonuses.push(gearBonus('payroll-tip', 'Diamonds ×2'));
-    if (allOrNothing) bonuses.push(gearBonus('all-or-nothing', 'Payout ×2'));
-    if (lightFingers) bonuses.push(gearBonus('light-fingers', 'Payout ×2'));
-    if (mixedCargo) bonuses.push(gearBonus('mixed-cargo', 'Payout ×1.5'));
+    if (boostedLoot) bonuses.push(gearBonus('fast-hands', `Boosted find ×${GEAR.fastHands}`));
+    if (payrollLoot) bonuses.push(gearBonus('payroll-tip', `Diamonds ×${GEAR.payrollTip}`));
+    if (allOrNothing) bonuses.push(gearBonus('all-or-nothing', `Payout ×${GEAR.allOrNothing}`));
+    if (lightFingers) bonuses.push(gearBonus('light-fingers', `Payout ×${GEAR.lightFingers.multiplier}`));
+    if (mixedCargo) bonuses.push(gearBonus('mixed-cargo', `Payout ×${GEAR.mixedCargo.multiplier}`));
   }
-  return { base, escape, gearMultiplier, amount: Math.floor(base * escape * gearMultiplier), bonuses };
+  return { base, escape, gearMultiplier, amount: whole(base * escape * gearMultiplier), bonuses };
+}
+
+// Pocketing locks in the getaway multiplier showing right now, never below ×1.
+// False Bottom adds +1 to that locked multiplier.
+export function pocketValue(state, cardId) {
+  const card = state.hand.find((item) => item.id === cardId);
+  if (!card) return null;
+  const locked = Math.max(1, escapeMultiplier(handTotal(state.hand), state));
+  const multiplier = locked + (has(state, 'false-bottom') ? 1 : 0);
+  return { locked, multiplier, amount: whole(card.loot * multiplier) };
 }
 
 export function bustRisk(state) {
@@ -150,8 +168,8 @@ export function createRun(seed, unlockedGear = []) {
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) throw new Error('Seed must be an unsigned 32-bit integer.');
   const state = {
     seed, rng: seed, phase: 'camp', trainIndex: 0, carriageIndex: 0,
-    trainLoot: 0, totalLoot: 0, gear: [], deck: [], hand: [],
-    pocketedId: null, secured: 0, boostNext: false, result: null, history: [], offers: [],
+    trainLoot: 0, carriedIn: 0, totalLoot: 0, gear: [], deck: [], hand: [],
+    pocketedId: null, pocketMultiplier: 0, secured: 0, boostNext: false, result: null, history: [], offers: [],
     unlockedGear: allowedUnlocks(unlockedGear),
     sideJobId: SIDE_JOBS[seed % SIDE_JOBS.length].id, sideJobComplete: false,
     rewards: [], reputationEarned: 0,
@@ -172,6 +190,7 @@ function deal(state) {
   state.phase = 'playing';
   state.hand = [];
   state.pocketedId = null;
+  state.pocketMultiplier = 0;
   state.secured = 0;
   state.boostNext = false;
   state.result = null;
@@ -191,11 +210,12 @@ export function chooseEquipment(state, id) {
 
 export function pocket(state, cardId) {
   if (state.phase !== 'playing' || state.pocketedId || handTotal(state.hand) > 21) return state;
-  const card = state.hand.find((item) => item.id === cardId);
-  if (!card) return state;
+  const value = pocketValue(state, cardId);
+  if (!value) return state;
   const next = structuredClone(state);
   next.pocketedId = cardId;
-  next.secured = card.loot * (has(state, 'false-bottom') ? 2 : 1);
+  next.pocketMultiplier = value.multiplier;
+  next.secured = value.amount;
   next.trainLoot += next.secured;
   next.totalLoot += next.secured;
   next.boostNext = has(state, 'fast-hands');
@@ -261,12 +281,15 @@ function finishTrain(next, unlockedGear) {
     const allowed = allowedUnlocks(unlockedGear);
     const newlyUnlocked = allowed.filter((id) => !next.unlockedGear.includes(id));
     next.unlockedGear = allowed;
+    // Cash above the target rides along and counts toward the next train's target.
+    next.carriedIn = next.trainLoot - TRAINS[next.trainIndex].target;
+    next.trainLoot = next.carriedIn;
     next.trainIndex++;
     next.carriageIndex = 0;
-    next.trainLoot = 0;
     next.phase = 'camp';
     next.hand = [];
     next.pocketedId = null;
+    next.pocketMultiplier = 0;
     next.secured = 0;
     next.boostNext = false;
     next.result = null;
